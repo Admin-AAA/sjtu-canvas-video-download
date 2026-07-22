@@ -5,7 +5,7 @@ import subprocess
 import shutil
 import tkinter.messagebox
 
-import requests
+from sjtu_http import get
 from sjtu_history import history, save_history
 
 self_dirname = os.path.dirname(sys.argv[0])
@@ -37,7 +37,7 @@ def download_courses_with_builtin_downloader(course_links, course_filenames, vid
             os.makedirs(output_dirname, exist_ok=True)
 
         tmp_output_filename = output_filename + ".part"
-        with requests.get(
+        with get(
             course_link,
             headers=headers,
             stream=True,
@@ -52,7 +52,7 @@ def download_courses_with_builtin_downloader(course_links, course_filenames, vid
         os.replace(tmp_output_filename, output_filename)
 
 
-def download_courses(course_links, course_filenames, video_dirname, no_record=False):
+def download_courses(course_links, course_filenames, video_dirname, no_record=False, silent=False):
     if not no_record:
         history.append(
             {
@@ -88,16 +88,18 @@ def download_courses(course_links, course_filenames, video_dirname, no_record=Fa
                 creationflags=subprocess.CREATE_NEW_CONSOLE
             )
         else:
-            tkinter.messagebox.showinfo(
-                "提示",
-                "未检测到 aria2c，改用内置下载器，速度可能较慢。"
-            )
+            if not silent:
+                tkinter.messagebox.showinfo(
+                    "提示",
+                    "未检测到 aria2c，改用内置下载器，速度可能较慢。"
+                )
             download_courses_with_builtin_downloader(
                 course_links, course_filenames, video_dirname
             )
     else:
         if aria2_command:
-            tkinter.messagebox.showinfo("提示", "请查看控制台输出")
+            if not silent:
+                tkinter.messagebox.showinfo("提示", "请查看控制台输出")
             try:
                 subprocess.run(
                     [
@@ -111,10 +113,11 @@ def download_courses(course_links, course_filenames, video_dirname, no_record=Fa
             except KeyboardInterrupt:
                 pass
         else:
-            tkinter.messagebox.showinfo(
-                "提示",
-                "未检测到 aria2c，改用内置下载器，速度可能较慢。"
-            )
+            if not silent:
+                tkinter.messagebox.showinfo(
+                    "提示",
+                    "未检测到 aria2c，改用内置下载器，速度可能较慢。"
+                )
             download_courses_with_builtin_downloader(
                 course_links, course_filenames, video_dirname
             )

@@ -1,262 +1,178 @@
+"""应用主壳：单窗口 + 侧边栏导航（登录 / 下载 / 历史）。"""
 import tkinter as tk
-import tkinter.filedialog
-import tkinter.messagebox
+import tkinter.ttk as ttk
+
 from sjtu_login import login_using_cookies
 from sjtu_login_frame import LoginFrame
 from sjtu_qr_code_login_frame import QRCodeLoginFrame
-from sjtu_canvas_video_picker_frame import SinglePickerFrame, MultiplePickerFrame
-from sjtu_canvas_video_helper import create_window
-from sjtu_canvas_video import get_all_courses
-from sjtu_real_canvas_video_v2 import get_real_canvas_videos_v2 as get_real_canvas_videos
-# from sjtu_real_canvas_video import get_real_canvas_videos as get_real_canvas_videos
 from sjtu_history_frame import HistoryFrame
-import json
+from sjtu_download_view import DownloadView
+from sjtu_style import (
+    apply_theme, COLORS, FONT_BASE, heading, card, primary_button, secondary_button,
+)
+
+NAV_ITEMS = [
+    ("login", "登录"),
+    ("download", "下载"),
+    ("history", "历史"),
+]
 
 
-class MainFrame(tk.Frame):
+def _round_rect(c, x, y, w, h, r, fill):
+    c.create_arc(x, y, x + 2 * r, y + 2 * r, start=90, extent=90, fill=fill, outline=fill)
+    c.create_arc(x + w - 2 * r, y, x + w, y + 2 * r, start=0, extent=90, fill=fill, outline=fill)
+    c.create_arc(x + w - 2 * r, y + h - 2 * r, x + w, y + h, start=270, extent=90, fill=fill, outline=fill)
+    c.create_arc(x, y + h - 2 * r, x + 2 * r, y + h, start=180, extent=90, fill=fill, outline=fill)
+    c.create_rectangle(x + r, y, x + w - r, y + h, fill=fill, outline=fill)
+    c.create_rectangle(x, y + r, x + w, y + h - r, fill=fill, outline=fill)
+
+
+class _NavItem(tk.Frame):
+    def __init__(self, master, text, command):
+        super().__init__(master, bg=COLORS["sidebar_bg"])
+        self._command = command
+        self._active = False
+        self.accent = tk.Frame(self, bg=COLORS["sidebar_bg"], width=3)
+        self.accent.pack(side="left", fill="y")
+        self.label = tk.Label(
+            self, text=text, bg=COLORS["sidebar_bg"], fg=COLORS["sidebar_fg"],
+            font=FONT_BASE, padx=14, pady=9,
+        )
+        self.label.pack(side="left", fill="x", expand=True)
+        for w in (self, self.label):
+            w.bind("<Button-1>", lambda e: self._command())
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+
+    def _on_enter(self, e):
+        if not self._active:
+            self._paint(COLORS["sidebar_hover"], COLORS["sidebar_hover"], COLORS["sidebar_fg"])
+
+    def _on_leave(self, e):
+        if not self._active:
+            self._paint(COLORS["sidebar_bg"], COLORS["sidebar_bg"], COLORS["sidebar_fg"])
+
+    def _paint(self, frame_bg, label_bg, label_fg):
+        self.config(bg=frame_bg)
+        self.label.config(bg=label_bg, fg=label_fg)
+
+    def set_active(self, active):
+        self._active = active
+        if active:
+            self._paint(COLORS["primary_soft"], COLORS["primary_soft"], COLORS["primary"])
+            self.accent.config(bg=COLORS["primary"])
+        else:
+            self._paint(COLORS["sidebar_bg"], COLORS["sidebar_bg"], COLORS["sidebar_fg"])
+            self.accent.config(bg=COLORS["sidebar_bg"])
+
+
+class App(tk.Frame):
     def __init__(self, master=None):
         tk.Frame.__init__(self, master)
+        apply_theme(master)
+        master.title("SJTU Canvas 视频下载器")
+        master.geometry("940x640")
+        master.minsize("760", "500")
+
+        self.grid(row=0, column=0, sticky=tk.N + tk.S + tk.W + tk.E)
+        master.columnconfigure(0, weight=1)
+        master.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=0)
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
 
         self.urls = [
             "https://courses.sjtu.edu.cn/app/oauth/2.0/login?login_type=outer",
-            "https://oc.sjtu.edu.cn/login/openid_connect"
+            "https://oc.sjtu.edu.cn/login/openid_connect",
         ]
-
-        self.grid(sticky=tk.N+tk.S+tk.W+tk.E)
-
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=1)
-        self.columnconfigure(2, weight=1)
-        self.columnconfigure(3, weight=1)
-
-        num_row = 0
-
-        self.login_label = tk.Label(
-            self,
-            text="第一次使用本工具, 请点击下方的按钮登录jAccount, 以获取Canvas视频信息."
-        )
-        self.login_label.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-        self.login_button = tk.Button(
-            self,
-            command=self.popup_login,
-            text="登录jAccount"
-        )
-        self.login_button.grid(column=1, row=num_row)
-        self.qr_code_login_button = tk.Button(
-            self,
-            command=self.popup_qr_code_login,
-            text="登录jAccount (二维码)"
-        )
-        self.qr_code_login_button.grid(column=2, row=num_row)
-        num_row += 1
-
-        self.import_label = tk.Label(
-            self,
-            text="如果此前已经使用本工具获取并保存了Canvas视频信息, 请点击下方的按钮导入该文件."
-        )
-        self.import_label.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-        self.import_button = tk.Button(
-            self,
-            command=self.popup_import,
-            text="导入下载地址"
-        )
-        self.import_button.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-
-        self.export_label = tk.Label(
-            self,
-            text="建议在获取Canvas视频信息后, 点击下方的按钮将其保存为文件."
-        )
-        self.export_label.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-        self.export_button = tk.Button(
-            self,
-            command=self.popup_export,
-            text="保存下载地址"
-        )
-        self.export_button.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-
-        self.history_label = tk.Label(
-            self,
-            text="点击下方的按钮继续之前未完成的下载."
-        )
-        self.history_label.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-        self.history_button = tk.Button(
-            self,
-            command=self.popup_history,
-            text="历史"
-        )
-        self.history_button.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-
-        self.download_label = tk.Label(
-            self,
-            text="获取Canvas视频信息后, 可点击下方的按钮下载视频."
-        )
-        self.download_label.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-        self.download_single_button = tk.Button(
-            self,
-            command=self.popup_download_single,
-            text="单个下载"
-        )
-        self.download_single_button.grid(column=0, row=num_row, columnspan=2)
-        self.download_multiple_button = tk.Button(
-            self,
-            command=self.popup_download_multiple,
-            text="批量下载"
-        )
-        self.download_multiple_button.grid(column=2, row=num_row, columnspan=2)
-        num_row += 1
-
-        self.course_id_label = tk.Label(self, text="课程ID")
-        self.course_id_label.grid(column=0, row=num_row)
-        self.course_id_var = tk.StringVar()
-        self.course_id_entry = tk.Entry(
-            self,
-            textvariable=self.course_id_var,
-            state=tk.DISABLED
-        )
-        self.course_id_entry.grid(
-            column=1, row=num_row
-        )
-        self.course_id_checkbutton_var = tk.IntVar(
-            value=False
-        )
-        self.course_id_checkbutton = tkinter.ttk.Checkbutton(
-            self,
-            variable=self.course_id_checkbutton_var,
-            command=self.course_id_checkbutton_changed,
-            text="使用课程ID"
-        )
-        self.course_id_checkbutton.grid(
-            column=2, row=num_row
-        )
-        self.course_id_update_button = tk.Button(
-            self,
-            command=self.update_course_id,
-            text="更新课程ID"
-        )
-        self.course_id_update_button.grid(
-            column=3, row=num_row
-        )
-        num_row += 1
-
-        self.status_label = tk.Label(self)
-        self.status_label.grid(column=0, row=num_row, columnspan=4)
-        num_row += 1
-
-        for i in range(num_row):
-            self.rowconfigure(i, weight=1)
-
         self.all_courses = []
-        self.refresh_status_label()
-
         self.cookies = None
+        self.use_course_id = False
+        self.course_id = ""
+        self._current_view = None
+        self._nav_items = {}
 
-    def course_id_checkbutton_changed(self):
-        if self.course_id_checkbutton_var.get():
-            self.course_id_entry.config(state=tk.NORMAL)
-        else:
-            self.course_id_entry.config(state=tk.DISABLED)
+        self._build_sidebar()
+        self.content = tk.Frame(self, bg=COLORS["bg"])
+        self.content.grid(row=0, column=1, sticky=tk.N + tk.S + tk.W + tk.E)
 
-    def refresh_status_label(self):
-        num_subject = len(self.all_courses)
-        num_course = sum([len(courses) for courses in self.all_courses])
-        self.status_label.configure(
-            text=f"当前已读取到: {num_subject}个科目, 共{num_course}讲"
+        self.status_var = tk.StringVar(value="就绪")
+        self.status_bar = tk.Label(
+            self, textvariable=self.status_var, anchor="w",
+            bg=COLORS["panel"], fg=COLORS["muted"], font=("PingFang SC", 11),
+            padx=14, pady=7, highlightbackground=COLORS["border"], highlightthickness=1,
         )
+        self.status_bar.grid(row=1, column=1, sticky=tk.W + tk.E)
 
-    def update_cookies_and_refresh_all_courses(self, cookies):
+        self.navigate("login")
+
+    def _build_sidebar(self):
+        self.sidebar = tk.Frame(self, bg=COLORS["sidebar_bg"], width=210)
+        self.sidebar.grid(row=0, column=0, rowspan=2, sticky=tk.N + tk.S)
+        self.sidebar.grid_propagate(False)
+
+        logo = tk.Canvas(self.sidebar, width=40, height=40, bg=COLORS["sidebar_bg"], highlightthickness=0)
+        logo.place(x=22, y=26)
+        _round_rect(logo, 2, 2, 36, 36, 9, COLORS["primary"])
+        logo.create_text(20, 21, text="C", fill="white", font=("PingFang SC", 18, "bold"))
+        tk.Label(self.sidebar, text="Canvas 视频下载", bg=COLORS["sidebar_bg"],
+                 fg="white", font=("PingFang SC", 14, "bold")).place(x=72, y=30)
+        tk.Label(self.sidebar, text="SJTU 课程视频", bg=COLORS["sidebar_bg"],
+                 fg=COLORS["sidebar_fg"], font=("PingFang SC", 11)).place(x=72, y=50)
+
+        nav_frame = tk.Frame(self.sidebar, bg=COLORS["sidebar_bg"])
+        nav_frame.place(x=12, y=110, width=190)
+        for name, text in NAV_ITEMS:
+            item = _NavItem(nav_frame, text, lambda n=name: self.navigate(n))
+            item.pack(fill="x", pady=2)
+            self._nav_items[name] = item
+
+        tk.Label(self.sidebar, text="Canvas 视频下载器", bg=COLORS["sidebar_bg"],
+                 fg="#5B6675", font=("PingFang SC", 11)).place(x=22, y=600)
+
+    def navigate(self, name):
+        if self._current_view is not None:
+            self._current_view.destroy()
+        for n, item in self._nav_items.items():
+            item.set_active(n == name)
+        self._current_view = None
+
+        if name == "login":
+            self._current_view = LoginView(self, self.content)
+        elif name == "download":
+            self._current_view = DownloadView(self, self.content)
+        elif name == "history":
+            self._current_view = HistoryFrame(self.content)
+        self._current_view.pack(fill="both", expand=True)
+
+    def on_login(self, cookies):
         login_using_cookies(self.urls[1], cookies)
         self.cookies = cookies
-        self.refresh_all_courses()
+        self.set_status("登录成功，正在加载课程列表…")
+        self.navigate("download")
 
-    def refresh_all_courses(self):
-        if self.course_id_checkbutton_var.get():
-            course_id = self.course_id_var.get()
-            if not course_id:
-                tkinter.messagebox.showerror("错误", "请输入课程ID")
-                return
-            self.all_courses = get_real_canvas_videos(course_id, self.cookies)
-        else:
-            self.all_courses = get_all_courses(self.cookies)
-        self.refresh_status_label()
+    def set_status(self, text):
+        self.status_var.set(str(text))
 
-    def popup_login(self):
-        window = create_window(self.master)
-        window.geometry("400x200")
-        LoginFrame(
-            self.urls[0],
-            lambda cookies: self.update_cookies_and_refresh_all_courses(
-                cookies
-            ),
-            window
-        )
 
-    def popup_import(self):
-        filename = tkinter.filedialog.askopenfilename(
-            filetypes=(
-                ("", "*.json"),
-            )
-        )
-        if filename:
-            with open(filename, encoding="utf-8") as f:
-                self.all_courses = json.load(f)
-            self.refresh_status_label()
+class LoginView(tk.Frame):
+    def __init__(self, app, master=None):
+        tk.Frame.__init__(self, master, bg=COLORS["bg"])
+        self.app = app
+        self.columnconfigure(0, weight=1)
 
-    def popup_export(self):
-        filename = tkinter.filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=(
-                ("", "*.json"),
-            )
-        )
-        for i, subject in enumerate(self.all_courses):
-            for j, course in enumerate(subject):
-                if type(course) is not dict:
-                    self.all_courses[i][j] = course.get()
-        if filename:
-            with open(filename, mode="w", encoding="utf-8") as f:
-                json.dump(
-                    self.all_courses, f,
-                    ensure_ascii=False,
-                    check_circular=False,
-                    indent=4
-                )
+        heading(self, "登录 jAccount", "登录后自动读取你的 Canvas 课程与视频信息。")
 
-    def popup_download_single(self):
-        window = create_window(self.master)
-        window.geometry("400x160")
-        SinglePickerFrame(self.all_courses, window)
+        body = tk.Frame(self, bg=COLORS["bg"])
+        body.pack(fill="x", padx=28)
+        nb = ttk.Notebook(body)
+        nb.pack(fill="x")
 
-    def popup_download_multiple(self):
-        window = create_window(self.master)
-        window.geometry("400x200")
-        MultiplePickerFrame(self.all_courses, window)
+        tab_account = tk.Frame(nb, bg=COLORS["panel"])
+        tab_qr = tk.Frame(nb, bg=COLORS["panel"])
+        nb.add(tab_account, text="账号密码")
+        nb.add(tab_qr, text="扫码登录")
 
-    def popup_qr_code_login(self):
-        window = create_window(self.master)
-        window.geometry("300x300")
-        QRCodeLoginFrame(
-            self.urls[0],
-            lambda cookies: self.update_cookies_and_refresh_all_courses(
-                cookies
-            ),
-            window
-        )
-
-    def update_course_id(self):
-        if self.cookies == None:
-            tkinter.messagebox.showerror("错误", "请登录")
-        else:
-            self.refresh_all_courses()
-
-    def popup_history(self):
-        window = create_window(self.master)
-        window.geometry("400x160")
-        HistoryFrame(window)
+        on_success = lambda: app.navigate("download")
+        LoginFrame(app.urls[0], lambda cookies: app.on_login(cookies), tab_account, on_success=on_success)
+        QRCodeLoginFrame(app.urls[0], lambda cookies: app.on_login(cookies), tab_qr, on_success=on_success)

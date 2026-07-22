@@ -1,4 +1,4 @@
-import requests
+from sjtu_http import get, post
 from PIL import Image
 from bs4 import BeautifulSoup
 import io
@@ -15,7 +15,7 @@ def parse_params(url):
 
 
 def get_params_uuid_cookies(url):
-    r = requests.get(
+    r = get(
         url,
         headers={"accept-language": "zh-CN"}
     )
@@ -28,7 +28,7 @@ def get_params_uuid_cookies(url):
 
 
 def get_captcha_img(uuid, cookies, url2):
-    r = requests.get(
+    r = get(
         "https://jaccount.sjtu.edu.cn/jaccount/captcha",
         params={
             "uuid": uuid,
@@ -44,7 +44,7 @@ def get_captcha_img(uuid, cookies, url2):
 
 
 def login(username, password, uuid, captcha, params, cookies):
-    r = requests.post(
+    r = post(
         "https://jaccount.sjtu.edu.cn/jaccount/ulogin",
         data={
             "user": username,
@@ -65,7 +65,7 @@ def login(username, password, uuid, captcha, params, cookies):
 
 
 def login_using_cookies(url, cookies):
-    r = requests.get(
+    r = get(
         url,
         headers={"accept-language": "zh-CN"},
         cookies=cookies

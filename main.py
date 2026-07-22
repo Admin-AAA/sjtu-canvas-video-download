@@ -1,13 +1,12 @@
 import monkey_patch
 import tkinter as tk
-from sjtu_canvas_video_main_frame import MainFrame
+from sjtu_canvas_video_main_frame import App
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
-
+# 关闭 urllib3 连接池 DEBUG 刷屏，仅保留 WARNING 以上，便于查看真实日志
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 root = tk.Tk()
-root.columnconfigure(0, weight=1)
-root.rowconfigure(0, weight=1)
-MainFrame(root)
+App(root)
 root.mainloop()

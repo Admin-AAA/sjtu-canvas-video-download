@@ -1,5 +1,5 @@
 from websocket import create_connection
-import requests
+from sjtu_http import get
 from PIL import Image
 import io
 import json
@@ -56,7 +56,7 @@ def send_update_qr_code(wss):
 
 
 def get_qr_code_img(uuid, ts, sig, cookies):
-    r = requests.get(
+    r = get(
         "https://jaccount.sjtu.edu.cn/jaccount/qrcode",
         params={
             "uuid": uuid,
@@ -70,7 +70,7 @@ def get_qr_code_img(uuid, ts, sig, cookies):
 
 
 def qr_code_login(uuid, cookies):
-    r = requests.get(
+    r = get(
         "https://jaccount.sjtu.edu.cn/jaccount/expresslogin",
         params={"uuid": uuid},
         cookies=cookies

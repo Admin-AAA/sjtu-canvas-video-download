@@ -1,4 +1,4 @@
-import requests
+from sjtu_http import get, post
 from bs4 import BeautifulSoup
 from hashlib import md5
 import base64
@@ -14,7 +14,7 @@ def get_oauth_consumer_key(cookies):
     try:
         oauth_consumer_key = base64.b64decode(
             BeautifulSoup(
-                requests.get(
+                get(
                     "https://courses.sjtu.edu.cn/app/vodvideo/vodVideoPlay.d2j?ssoCheckToken=ssoCheckToken&refreshToken=&accessToken=&userId=&",
                     cookies=cookies
                 ).content, "html.parser"
@@ -57,7 +57,7 @@ def get_subject_ids(cookies):
     subject_ids = []
     tecl_ids = []
     try:
-        subject_list = requests.get(
+        subject_list = get(
             "https://courses.sjtu.edu.cn/app/system/course/subject/findSubjectVodList",
             params={
                 "pageIndex": 1,
@@ -83,7 +83,7 @@ def get_subject_ids(cookies):
 
 def get_course_ids(subject_id, tecl_id, cookies):
     try:
-        courses = requests.get(
+        courses = get(
             "https://courses.sjtu.edu.cn/app/system/resource/vodVideo/getCourseListBySubject",
             params={
                 "orderField": "courTimes",
@@ -93,11 +93,8 @@ def get_course_ids(subject_id, tecl_id, cookies):
             headers={"accept": "application/json"},
             cookies=cookies
         ).json()["list"][0]
-        course_ids = [
-            course["id"]
-            for course in courses["responseVoList"]
-        ]
-        return course_ids
+        # 返回完整记录而非仅 id，便于 Course 优先本地读取元数据，避免每节课各发一次请求
+        return courses["responseVoList"]
     except Exception:
         pass
     return None
@@ -109,7 +106,7 @@ def get_course(course_id, cookies, oauth_consumer_key):
         course_id, oauth_nonce, oauth_consumer_key
     )
     try:
-        course = requests.post(
+        course = post(
             "https://courses.sjtu.edu.cn/app/system/resource/vodVideo/getvideoinfos",
             data={
                 "playTypeHls": "true",
@@ -135,8 +132,9 @@ def get_course(course_id, cookies, oauth_consumer_key):
 
 
 class Course:
-    def __init__(self, course_id, cookies, oauth_consumer_key):
-        self.course_id = course_id
+    def __init__(self, record, cookies, oauth_consumer_key):
+        self.record = record
+        self.course_id = record["id"]
         self.cookies = cookies
         self.oauth_consumer_key = oauth_consumer_key
         self.flag = False
@@ -151,6 +149,9 @@ class Course:
         return self.course
 
     def __getitem__(self, key):
+        # 优先读取列表记录中的元数据，仅在需要播放地址时才联网
+        if key in self.record:
+            return self.record[key]
         return self.get()[key]
 
 
@@ -165,9 +166,9 @@ def get_all_courses(cookies):
         if course_ids is None:
             continue
         courses = []
-        for course_id in course_ids:
+        for record in course_ids:
             courses.append(
-                Course(course_id, cookies, oauth_consumer_key)
+                Course(record, cookies, oauth_consumer_key)
             )
         if courses:
             all_courses.append(courses)

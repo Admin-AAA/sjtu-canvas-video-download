@@ -1,5 +1,5 @@
-import requests
 from bs4 import BeautifulSoup
+from sjtu_http import get, post
 
 
 def get_old_external_tool_id(course_id, oc_cookies):
@@ -7,7 +7,7 @@ def get_old_external_tool_id(course_id, oc_cookies):
     try:
         elem = (
             BeautifulSoup(
-                requests.get(
+                get(
                     f"https://oc.sjtu.edu.cn/courses/{course_id}",
                     cookies=oc_cookies,
                 ).content,
@@ -35,7 +35,7 @@ def get_sub_cookies(course_id, oc_cookies):
         i["name"]: i["value"]
         for i in
         BeautifulSoup(
-            requests.get(
+            get(
                 f"https://oc.sjtu.edu.cn/courses/{course_id}/external_tools/{old_external_tool_id}",
                 cookies=oc_cookies
             ).content, "html.parser"
@@ -48,7 +48,7 @@ def get_sub_cookies(course_id, oc_cookies):
         if i.name == "input"
     }
 
-    r = requests.post(
+    r = post(
         "https://courses.sjtu.edu.cn/lti/launch",
         data=data,
         allow_redirects=False
@@ -58,7 +58,7 @@ def get_sub_cookies(course_id, oc_cookies):
 
 
 def get_real_canvas_video_single(i, sub_cookies):
-    return requests.post(
+    return post(
         "https://courses.sjtu.edu.cn/lti/vodVideo/getVodVideoInfos",
         data={
             "playTypeHls": "true",
@@ -92,7 +92,7 @@ def get_real_canvas_videos_using_sub_cookies(sub_cookies, canvasCourseId):
     return [
         [
             RealCourse(i, sub_cookies)
-            for i in requests.post(
+            for i in post(
                 "https://courses.sjtu.edu.cn/lti/vodVideo/findVodVideoList",
                 data={
                     "pageIndex": "1",

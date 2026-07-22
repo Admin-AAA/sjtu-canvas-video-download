@@ -6,4 +6,5 @@ __pycache__/
 /main.spec
 /windows.zip
 /venv/
+/.venv/
 /history.json

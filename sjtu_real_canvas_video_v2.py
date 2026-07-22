@@ -2,8 +2,8 @@ import base64
 import json
 from urllib.parse import parse_qsl, quote, urlparse
 
-import requests
 from bs4 import BeautifulSoup
+from sjtu_http import get, post
 
 
 def _decode_jwt_payload(token):
@@ -144,7 +144,7 @@ def _request_video_list(sub_cookies, v_header, course_id, canvasCourseId):
     last_payload = None
 
     for body in candidate_bodies:
-        response = requests.post(
+        response = post(
             "https://v.sjtu.edu.cn/jy-application-canvas-sjtu/directOnDemandPlay/findVodVideoList",
             json=body,
             cookies=sub_cookies,
@@ -175,7 +175,7 @@ def get_external_tool_id(course_id, oc_cookies):
     try:
         elem = (
             BeautifulSoup(
-                requests.get(
+                get(
                     f"https://oc.sjtu.edu.cn/courses/{course_id}",
                     cookies=oc_cookies,
                 ).content,
@@ -200,7 +200,7 @@ def get_external_tool_id(course_id, oc_cookies):
 def get_sub_cookies_v2(course_id, oc_cookies):
     external_tool_id = get_external_tool_id(course_id, oc_cookies)
     launch_form = BeautifulSoup(
-        requests.get(
+        get(
             f"https://oc.sjtu.edu.cn/courses/{course_id}/external_tools/{external_tool_id}",
             cookies=oc_cookies,
         ).content,
@@ -221,7 +221,7 @@ def get_sub_cookies_v2(course_id, oc_cookies):
         if i.name == "input"
     }
 
-    r = requests.post(
+    r = post(
         "https://v.sjtu.edu.cn/jy-application-canvas-sjtu/oidc/login_initiations",
         data=data,
         cookies=oc_cookies,
@@ -246,7 +246,7 @@ def get_sub_cookies_v2(course_id, oc_cookies):
         if i.name == "input"
     }
 
-    r_2 = requests.post(
+    r_2 = post(
         "https://v.sjtu.edu.cn/jy-application-canvas-sjtu/lti3/lti3Auth/ivs",
         data=data_2,
         cookies=oc_cookies,
@@ -270,7 +270,7 @@ def get_sub_cookies_v2(course_id, oc_cookies):
             f"当前返回字段: {sorted(params_dict.keys())}"
         )
 
-    r_3 = requests.get(
+    r_3 = get(
         "https://v.sjtu.edu.cn/jy-application-canvas-sjtu/lti3/getAccessTokenByTokenId",
         params={"tokenId": tokenId, },
         cookies=oc_cookies,
@@ -298,7 +298,7 @@ def get_sub_cookies_v2(course_id, oc_cookies):
 
 
 def get_real_canvas_video_single_v2(i, sub_cookies, v_header):
-    payload = requests.post(
+    payload = post(
         "https://v.sjtu.edu.cn/jy-application-canvas-sjtu/directOnDemandPlay/getVodVideoInfos",
         data={
             "playTypeHls": "true",
@@ -336,6 +336,12 @@ class RealCourseV2:
         return self.course
 
     def __getitem__(self, key):
+        # 列表记录(self.i)通常已包含 courName / subjName / userName 等元数据，
+        # 优先本地读取，避免每次访问字段都触发一次网络请求
+        # （之前在下拉框里会为每节课各发一次请求，既慢又易因网络抖动崩溃）。
+        # 只有真正需要播放地址(videoPlayResponseVoList)时才联网拉详情。
+        if key in self.i:
+            return self.i[key]
         return self.get()[key]
 
 

@@ -125,7 +125,14 @@ class DownloaderFrame(tk.Frame):
         return course_links, course_filenames
 
     def preview(self):
-        _, course_filenames = self.get_course_links_filenames()
+        try:
+            _, course_filenames = self.get_course_links_filenames()
+        except Exception as e:
+            tkinter.messagebox.showerror(
+                "获取视频信息失败",
+                f"{e}\n请检查网络或登录状态后重试。"
+            )
+            return
         window = create_window(self.master)
         tk.Label(window, text='\n'.join(course_filenames)).pack()
 
@@ -139,5 +146,15 @@ class DownloaderFrame(tk.Frame):
         if not video_dirname:
             tkinter.messagebox.showerror("错误", "请指定保存路径")
             return
-        course_links, course_filenames = self.get_course_links_filenames()
+        try:
+            course_links, course_filenames = self.get_course_links_filenames()
+        except Exception as e:
+            tkinter.messagebox.showerror(
+                "获取视频信息失败",
+                f"{e}\n请检查网络或登录状态后重试。"
+            )
+            return
+        if not course_links:
+            tkinter.messagebox.showerror("错误", "没有可下载的视频，请确认选择。")
+            return
         download_courses(course_links, course_filenames, video_dirname)
